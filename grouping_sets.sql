@@ -75,4 +75,39 @@ grouped data :
 | Jeremy Tyler    | null         | 2011   | 207          |
 
 */
+
+-- Build additional queries on top of the results of the GROUPING SETS aggregations above to answer the following questions:
+    --Write a query to answer: "Which player scored the most points playing for a single team?"
+
+
+with de_duped_nba_games as (
+  select 
+    game_date_est,
+    game_id, 
+    max(season) as season from bootcamp.nba_games 
+    group by 1,2),
+base as (
+  select 
+    gd.*, 
+    g.season as season
+  from bootcamp.nba_game_details_dedup gd
+  join de_duped_nba_games g on gd.game_id = g.game_id
+),
+grouped as (
+select player_name, team_id, season, sum(pts) as tot_points from base group by
+  grouping sets(
+  (player_name, team_id),
+  (player_name, season),
+  (team_id))
+) 
+select 
+  player_name, 
+  min(team_id) as team_id, 
+  max(tot_points) as points 
+from grouped 
+where team_id is not null and player_name is not null 
+group by 1 
+having count(team_id) = 1 
+order by 3 desc
+limit 1
   
