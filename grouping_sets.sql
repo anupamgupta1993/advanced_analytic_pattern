@@ -224,3 +224,65 @@ Output :
 
 */
 
+-- Write a query (query_7) that uses window functions on nba_game_details to answer the question: "How many games in a row did LeBron James score over 10 points a game?"
+
+with de_duped_nba_games as (
+    select distinct
+        game_id,
+        game_date_est
+    from bootcamp.nba_games
+),
+
+base_table as (
+    select distinct
+        gd.game_id,
+        g.game_date_est,
+        gd.team_id,
+        gd.player_name,
+        case when gd.pts > 10 then 1 else 0 end as result
+    from bootcamp.nba_game_details_dedup as gd
+    inner join de_duped_nba_games as g on gd.game_id = g.game_id
+    where gd.player_name = 'LeBron James'
+),
+
+grouped as (
+    select
+        *,
+        case
+            when LAG(result) over (order by game_date_est) <> result
+                then 1
+            else 0
+        end as counter
+    from base_table
+),
+
+final as (
+    select
+        *,
+        SUM(counter) over (order by game_date_est) as group_id
+    from grouped
+)
+
+select
+    player_name,
+    MAX(streak) as max
+from (
+    select
+        player_name,
+        group_id,
+        SUM(result) as streak
+    from final group by 1, 2
+) as temp group by 1
+
+/*
+Output :
+
++--------------+-----+
+| Player Name  | Max |
++--------------+-----+
+| LeBron James | 136 |
++--------------+-----+
+
+
+*/
+
