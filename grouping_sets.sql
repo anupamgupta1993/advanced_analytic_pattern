@@ -120,6 +120,7 @@ Output :
 
 */
   -- Write a query (query_4) to answer: "Which player scored the most points in one season?"
+
 with de_duped_nba_games as (
   select 
     game_date_est,
@@ -157,3 +158,69 @@ Output :
 | Kevin Durant  | 2013   | 3265   |
 
 */
+
+--Write a query (query_6) that uses window functions on nba_game_details to answer the question: "What is the most games a single team has won in a given 90-game stretch?
+
+with de_duped as (
+    select
+        game_date_est,
+        game_id,
+        home_team_id,
+        visitor_team_id,
+        max(home_team_wins) as did_home_team_win
+    from bootcamp.nba_games group by 1, 2, 3, 4
+),
+
+games as (
+    select
+        game_date_est,
+        game_id,
+        home_team_id as team_id,
+        case when did_home_team_win = 1 then 1 else 0 end as did_win
+    from de_duped
+    union all
+    select
+        game_date_est,
+        game_id,
+        visitor_team_id as team_id,
+        case when did_home_team_win = 0 then 1 else 0 end as did_win
+    from de_duped
+),
+
+wins as (
+    select
+        team_id,
+        sum(did_win)
+            over (
+                partition by team_id
+                order by game_date_est rows between 89 preceding and current row
+            )
+            as wins_90_game
+    from games
+)
+
+select
+    team_id,
+    max(wins_90_game) as max_wins
+from wins
+group by 1
+order by 2 desc
+
+/*
+Output :
+
+| Team ID      | Max Wins |
+|:-------------|:--------:|
+| 1610612744   | 80       |
+| 1610612739   | 74       |
+| 1610612748   | 74       |
+| 1610612749   | 74       |
+| 1610612759   | 74       |
+| 1610612742   | 72       |
+| 1610612747   | 72       |
+| 1610612738   | 72       |
+| 1610612741   | 71       |
+| 1610612745   | 71       |
+
+*/
+
