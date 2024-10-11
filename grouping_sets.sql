@@ -37,66 +37,76 @@ nba_games:
 -- query for aggregating based on the following groupings
 -- player and team
 -- player and season
--- team
+-- team 
 
 with de_duped_nba_games as (
   select 
     game_date_est,
     game_id, 
+    max(home_team_id) as home_team_id,
+    max(visitor_team_id) as visitor_team_id,
+    max(home_team_wins) as home_team_wins,
     max(season) as season from bootcamp.nba_games 
     group by 1,2),
 base as (
   select 
     gd.*, 
-    g.season as season
+    g.season as season,
+    case when (gd.team_id = g.home_team_id and home_team_wins = 1) then 1
+         when (gd.team_id = g.visitor_team_id and home_team_wins = 0) then 1 else 0 end as did_team_win
   from bootcamp.nba_game_details_dedup gd
-  join de_duped_nba_games g on gd.game_id = g.game_id
+  join de_duped_nba_games g on gd.game_id = g.game_id 
 ),
 grouped as (
 select 
   player_name, 
   team_id, 
-  season, 
+  season,
+  game_id, 
   sum(pts) as tot_points,
-  case when GROUPING(player_name) = 0 and GROUPING(season) = 0 then 'player_season'
-  when GROUPING(player_name) = 0 and GROUPING(team_id) = 0 then 'player_team' 
-  else 'team' end as aggregation_level
+  max(did_team_win) as win,
+  case 
+    when GROUPING(player_name) = 0 and GROUPING(season) = 0 then 'player_season'
+    when GROUPING(player_name) = 0 and GROUPING(team_id) = 0 then 'player_team' 
+    else 'game_team' end as aggregation_level
 from base group by
   grouping sets(
   (player_name, team_id),
   (player_name, season),
-  (team_id))
+  (team_id, game_id))
 ) 
 
 /*
 grouped data :
 
-| Player Name     | Team ID      | Season | Total Points |
-|-----------------|--------------|--------|--------------|
-| Nick Young      | null         | 2009   | 704          |
-| Jawun Evans     | null         | 2018   | 12           |
-| null            | 1610612749   | null   | 181128       |
-| Jeff Green      | 1610612753   | null   | 714          |
-| Jaylen Johnson  | 1610612741   | null   | 3            |
-| Jeff McInnis    | 1610612739   | null   | 1360         |
-| Jeff Withey     | 1610612740   | null   | 319          |
-| Jerami Grant    | null         | 2019   | 1153         |
-| Jermaine O'Neal | 1610612744   | null   | 410          |
-| Jeremy Tyler    | null         | 2011   | 207          |
++---------------+----------+--------+----------+-----------+-----+--------------------+
+| Player Name  | Team ID  | Season | Game ID  | Tot Points| Win | Aggregation Level |
++---------------+----------+--------+----------+-----------+-----+--------------------+
+| null         | 1610612739| null   | 20300348 | 85        | 0   | game_team         |
+| null         | 1610612750| null   | 11900035 | 123       | 0   | game_team         |
+| null         | 1610612759| null   | 12200050 | 111       | 1   | game_team         |
+| null         | 1610612762| null   | 20500401 | 82        | 1   | game_team         |
+| null         | 1610612738| null   | 21600970 | 99        | 0   | game_team         |
+| null         | 1610612766| null   | 22100482 | 115       | 1   | game_team         |
+| null         | 1610612738| null   | 21900156 | 140       | 1   | game_team         |
+| null         | 1610612766| null   | 21700892 | 114       | 1   | game_team         |
+| null         | 1610612766| null   | 21200618 | 92        | 0   | game_team         |
+| null         | 1610612743| null   | 21600555 | 106       | 0   | game_team         |
++---------------+----------+--------+----------+-----------+-----+--------------------+
 
 */
 
 -- Build additional queries on top of the results of the GROUPING SETS aggregations above to answer the following questions:
     --Write a query to answer: "Which player scored the most points playing for a single team?"
-
-select 
-  player_name, 
-  team_id, 
-  tot_points 
-from grouped 
-where aggregation_level = 'player_team' 
-order by 3 desc 
-limit 1
+  
+  select 
+    player_name, 
+    team_id, 
+    tot_points 
+  from grouped 
+  where aggregation_level = 'player_team' 
+  order by 3 desc 
+  limit 1
   
 /*
 Output :
@@ -107,16 +117,16 @@ Output :
 
 */
   -- Write a query (query_4) to answer: "Which player scored the most points in one season?"
-
-select 
-  player_name, 
-  season, 
-  max(tot_points) as points 
-from grouped 
-where aggregation_level = 'player_season' 
-group by 1,2
-order by 3 desc
-limit 1
+  
+  select 
+    player_name, 
+    season, 
+    max(tot_points) as points 
+  from grouped 
+  where aggregation_level = 'player_season' 
+  group by 1,2
+  order by 3 desc
+  limit 1
   
 /*
 Output : 
@@ -127,6 +137,35 @@ Output :
 
 */
 
+-- Write a query (query_5) to answer: "Which team has won the most games"
+  
+  select 
+    team_id, 
+    count(win) filter (where win = 1) as total_wins 
+  from grouped 
+  where aggregation_level = 'game_team' 
+  group by 1 
+  order by 2 desc
+
+  /*
+  Output :
+
++------------+------------+
+| Team ID    | Total Wins |
++------------+------------+
+| 1610612759 | 1182       |
+| 1610612748 | 1073       |
+| 1610612738 | 1055       |
+| 1610612742 | 1037       |
+| 1610612744 | 1019       |
+| 1610612745 | 995        |
+| 1610612743 | 993        |
+| 1610612762 | 951        |
+| 1610612747 | 947        |
+| 1610612760 | 927        |
++------------+------------+
+
+  */
 --Write a query (query_6) that uses window functions on nba_game_details to answer the question: "What is the most games a single team has won in a given 90-game stretch?
 
 with de_duped as (
